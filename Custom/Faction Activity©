@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Faction Activity
 // @namespace    TornExtensions
-// @version      1.3
+// @version      1.5
 // @description  Highlights inactive faction members with inactive time and color coded.
 // @colorCodes 1d-3d = Yellow, 4d-6d = Orange, 7d-13d = Red, 14+d = Purple 
 // @owner        Phillip_J_Fry [2184575]
