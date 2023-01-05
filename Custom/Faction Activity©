@@ -20,7 +20,7 @@
     7:'#f00',
     4:'#f70',
     1:'#ff0',
-  }, MIN_DAY_KEYS = Object.keys(MIN_DAY_COLOR_LOOKUP);
+  }, MIN_DAY_KEYS = Object.keys(MIN_DAY_COLOR_LOOKUP).map(e=>parseInt(e)).sort().reverse();
  
   function sendRequest(httpAction, url) {
     const promise = new Promise((success, failure) => {
