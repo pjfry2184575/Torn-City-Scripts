@@ -1,8 +1,9 @@
 // ==UserScript==
 // @name         Company Activity for Torn PDA
 // @namespace    TornExtensions
-// @version      1.1
-// @description  Shows the activity of employees.
+// @version      1.3
+// @description  Shows the activity of employees with Last Action time & color coded.
+// @colorCodes  1d = Yellow, 2d = Orange, 3d = Red, 7+d = Purple
 // @author       Twenu [XID 2659526] Edited*
 // @match        https://www.torn.com/companies.php*
 // @grant        none
