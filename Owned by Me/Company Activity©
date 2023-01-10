@@ -4,7 +4,7 @@
 // @version      1.3
 // @description  Shows the activity of employees with Last Action time & color coded.
 // @colorCodes  1d = Yellow, 2d = Orange, 3d = Red, 7+d = Purple
-// @author       Twenu [XID 2659526] Edited*
+// @author       Twenu [XID 2659526] but Edited*
 // @match        https://www.torn.com/companies.php*
 // @grant        none
 // ==/UserScript==
