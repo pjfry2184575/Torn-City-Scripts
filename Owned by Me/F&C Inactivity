@@ -1,0 +1,371 @@
+// ==UserScript==
+
+// @name         Highlight Inactivity
+
+// @namespace    zero.inactive.torn
+
+// @version      0.1
+
+// @description  Higlights Inactive People
+
+// @author       You
+
+// @match        https://www.torn.com/joblist.php*
+
+// @match        https://www.torn.com/companies.php*
+
+// @match        https://www.torn.com/factions.php*
+
+// @match        https://www.torn.com/companies.php#/option=employees
+
+// @grant        none
+
+// ==/UserScript==
+
+var transparency = 0.4;
+
+var locurl = window.location.href;
+
+var api = '###PDA-APIKEY###';
+
+var uid;
+
+var edata = {};
+
+var edd = {};
+
+var fedata = {};
+
+var fedd = {};
+
+var url;
+
+async function getfData(){
+
+    if (locurl.includes('&ID=')){
+
+        uid = locurl.match(/&ID=\d+/gm);
+
+        url = 'https://api.torn.com/faction/'+uid[0].substring(4)+'?selections=&key='+api;
+
+    }
+
+    else if (locurl.includes('userID=')){
+
+        uid = locurl.match(/userID=\d+/gm);
+
+        console.log(uid);
+
+        var tdata = await $.getJSON('https://api.torn.com/user/'+uid[0].substring(7)+'?selections=&key='+api);
+
+        uid = tdata.faction.faction_id;
+
+        url = 'https://api.torn.com/faction/'+uid+'?selections=&key='+api;
+
+    }
+
+    else if (locurl.includes('step=your#/tab=info')){
+
+        uid = await $.getJSON(`https://api.torn.com/user/?selections=profile&key=${api}&comment=Inactivity`);
+
+        console.log(uid);
+
+        uid = uid.faction.faction_id;
+
+        url = 'https://api.torn.com/faction/'+uid+'?selections=&key='+api;
+
+    }
+
+    else{
+
+        return;
+
+    }
+
+    var data = await $.getJSON(url);
+
+    console.log(data);
+
+    //1 day = yellow, 2-3 days = orange, 4-6 days = red & 7+ days = purple
+
+    for (let id in data.members){
+
+        var ename = data.members[id].name;
+
+        var ld = data.members[id].last_action.relative;
+
+        if (ld.includes('day')){
+
+            var d = ld.split(' ')[0];
+
+            if (d >= 1){
+
+                fedd[ename]=`rgb(255,255,0,${transparency})`;
+
+            }
+
+            if (d >= 2){
+
+                fedd[ename]=`rgb(255,165,0,${transparency})`;
+
+            }
+
+            if (d >= 4){
+
+                fedd[ename]=`rgb(255,0,0,${transparency})`;
+
+            }
+
+            if (d >= 7){
+
+                fedd[ename]=`rgb(160,32,240,${transparency})`;
+
+            }
+
+        }
+
+        fedata[ename] = ld;
+
+    }
+
+    fchange();
+
+    console.log(fedata);
+
+    console.log(fedd);
+
+}
+
+async function getData(){
+
+    console.log('getData');
+
+    if (locurl.includes('&ID=')){
+
+        uid = locurl.match(/&ID=\d+/gm);
+
+        url = 'https://api.torn.com/company/'+uid[0].substring(4)+'?selections=&key='+api;
+
+    }
+
+    else if (locurl.includes('userID=')){
+
+        uid = locurl.match(/userID=\d+/gm);
+
+        var tdata = await $.getJSON('https://api.torn.com/user/'+uid[0].substring(7)+'?selections=&key='+api);
+
+        uid = tdata.job.company_id;
+
+        url = 'https://api.torn.com/company/'+uid+'?selections=&key='+api;
+
+    }
+
+    else if (locurl.includes('option=employees')){
+
+        uid = await $.getJSON(`https://api.torn.com/user/?selections=profile&key=${api}&comment=Inactivity`);
+
+        console.log(uid);
+
+        uid = uid.job.company_id;
+
+        url = 'https://api.torn.com/company/'+uid+'?selections=&key='+api;
+
+    }
+
+    else{
+
+        return;
+
+    }
+
+    var data = await $.getJSON(url);
+
+    for (let id in data.company.employees){
+
+        var ename = data.company.employees[id].name;
+
+        var ld = data.company.employees[id].last_action.relative;
+
+        if (ld.includes('day')){
+
+            var d = ld.split(' ')[0];
+
+            if (d >= 1){
+
+                edd[ename]=`rgb(255,255,0,${transparency})`;
+
+            }
+
+            if (d >= 2){
+
+                edd[ename]=`rgb(255,165,0,${transparency})`;
+
+            }
+
+            if (d >= 4){
+
+                edd[ename]=`rgb(255,0,0,${transparency})`;
+
+            }
+
+            if (d >= 7){
+
+                edd[ename]=`rgb(160,32,240,${transparency})`;
+
+            }
+
+        }
+
+        edata[ename] = ld;
+
+    }
+
+    if (locurl.includes('option=employees')){change();}
+
+    else{cchange();}
+
+    console.log(edata);
+
+    console.log(edd);
+
+}
+
+function change(){
+
+    // console.log('here');
+
+    console.log($('.employee-list').length);
+
+    if ($('.employee-list').length == 0){
+
+        setTimeout(change,1000);
+
+        return;
+
+    }
+
+    console.log('here');
+
+    $('.employee-list > li').each(function(){
+
+        var element = $(this);
+
+        var emn = $('.user.name', element).text();
+
+        console.log(emn);
+
+        if (Object.keys(edd).includes(emn)){
+
+            $(this).css('background-color',edd[emn]);
+
+        }
+
+        var idat = `<span style="font-size:12px;position:absolute;right:50px; color:rgb(162, 211, 249);">`+edata[emn]+`</span>`;
+
+        //$($('.honor-text', element)).text(emn + ' ' + edata[emn]);
+
+        $(this).append(idat);
+
+    });
+
+}
+
+function cchange(){
+
+    // console.log('here');
+
+    console.log($('.employees-list').length);
+
+    if ($('.employees-list').length == 0){
+
+        setTimeout(cchange,1000);
+
+        return;
+
+    }
+
+    console.log('here');
+
+    $('.employees-list > li').each(function(){
+
+        var element = $(this);
+
+        var emn = $('.user.name', element).text();
+
+        console.log(emn);
+
+        if (Object.keys(edd).includes(emn)){
+
+            $(this).css('background-color',edd[emn]);
+
+        }
+
+        var idat = `<span style="font-size:12px;position:absolute;right:50px; color:rgb(162, 211, 249);">`+edata[emn]+`</span>`;
+
+        //$($('.honor-text', element)).text(emn + ' ' + edata[emn]);
+
+        $(this).append(idat);
+
+    });
+
+}
+
+function fchange(){
+
+    // console.log('here');
+
+    $('.table-body > li').each(function(){
+
+        //console.log('here');
+
+        var element = $(this);
+
+        var emn = $("span[class^='searchText']", element).text();
+
+        console.log(emn);
+
+        if (Object.keys(fedd).includes(emn)){
+
+            console.log('color check');
+
+            $(this).css('background-color',fedd[emn]);
+
+        }
+
+        var idat = `<span style="font-size:12px;position:absolute;top:0;right:0;">`+fedata[emn]+`</span>`;
+
+        //$($('.honor-text', element)).text(emn + ' ' + edata[emn]);
+
+        $($("div[class^='searchWrap']", element)).append(idat);
+
+    });
+
+}
+
+if (locurl.includes('joblist.php')){
+
+    getData();
+
+}
+
+if (locurl.includes('factions.php')){
+
+    $('.table-cell').css('position','relative');
+
+    getfData();
+
+}
+
+if (locurl.includes('option=employees')){
+
+    getData();
+
+}
+
+$(window).on('hashchange', function(e){
+
+    setTimeout(getData,300);
+
+    setTimeout(getfData,300);
+
+});
