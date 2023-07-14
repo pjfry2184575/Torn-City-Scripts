@@ -1,0 +1,20 @@
+// ==UserScript==
+// @name         Crime Bar Color Fix
+// @version      0.1
+// @description  try to take over the world!
+// @author       You
+// @match        https://www.torn.com/loader.php?sid=crimes
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
+// @grant        none
+// @require      https://cdn.jsdelivr.net/gh/CoeJoder/waitForKeyElements.js@v1.2/waitForKeyElements.js
+// @updateURL    https://gist.github.com/MCSH/4c80a3196bef7c9b42de2934d87dca1b/raw/crime_bar_color_fix.user.js
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    waitForKeyElements("div.densityBarFill___NRG0o", (elem)=>{
+        elem.style.filter = "saturate(5)";
+    });
+
+})();

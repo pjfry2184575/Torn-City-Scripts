@@ -1,0 +1,109 @@
+// ==UserScript==
+// @name         Bootlegging
+// @namespace    http://github.com/MCSH
+// @version      0.7
+// @description  try to take over the world!
+// @author       You
+// @match        https://www.torn.com/loader.php?sid=crimes
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
+// @grant        GM.setValue
+// @grant        GM.getValue
+// @grant        GM_addStyle
+// @updateURL    https://gist.github.com/MCSH/2b843c6919d4956bd9f39eab42fd1f9b/raw/bootlegging.user.js
+// ==/UserScript==
+
+(async function() {
+    'use strict';
+
+    GM_addStyle(`
+
+        @keyframes crimeblinker {
+            50% {
+                opacity: 0;
+            }
+        }
+
+    `);
+
+    var prefs = JSON.parse(await GM.getValue("bootlegging_prefs", '{"min_stock": 0}'));
+
+    function updatePrefs(){
+        GM.setValue('bootlegging_prefs', JSON.stringify(prefs));
+    }
+
+    function update(){
+        const stock = document.querySelector("div[class^='stock']");
+        if(stock){
+            if(!stock.parentNode.querySelector("input")){
+                const d = document.createElement('div');
+                d.innerHTML = `<div style="    grid-gap: 1px;
+    background: var(--crimes-crimeOption-bgColor);
+    box-shadow: var(--crimes-base-boxShadow);
+    display: grid;
+    gap: 1px;
+    grid-template-columns: repeat(8,1fr);
+    "><p style="color: var(--crimes-bootlegging-genreStock-noStock-color);">Minimum stock:</p> <input type="number" value=${prefs.min_stock} id="stock-min" style="background-color: var(--default-bg-gray-color);"/></div>`;
+                stock.before(d);
+
+                const inp = d.querySelector("#stock-min");
+                inp.oninput = ()=>{
+                    prefs.min_stock = Number(inp.value);
+                    updatePrefs();
+                }
+            }
+        }
+
+        const copies = document.querySelectorAll("div[class^='copyProgress']");
+        let minc = undefined;
+        let mind = undefined;
+
+        for(let c of copies){
+            const que = Number(c.childNodes[0].textContent.split(' ')[0]);
+            const stock = Number(c.childNodes[2].childNodes[0].textContent.replace(",",""));
+            const genre = c.parentElement.childNodes[0].textContent;
+            let ratio = prefs[genre] || 1;
+
+            if(c.childNodes.length == 3){
+                const d = document.createElement('div');
+                d.className = c.childNodes[2].className;
+                c.appendChild(d);
+                const d2 = document.createElement("div");
+                d2.style = "color: var(--crimes-bootlegging-genreStock-noStock-color);";
+                d2.innerHTML = `<input type="number" style="background-color: var(--default-bg-gray-color); width: 50%;" value=${ratio*100}></input>%`
+                c.appendChild(d2);
+
+                const ip = d2.childNodes[0];
+                ip.oninput = () => {
+                    prefs[genre] = Number(ip.value)/100;
+                    updatePrefs();
+                }
+
+                const disk = c.previousElementSibling;
+                disk.ondblclick = () => {
+                    disk.dispatchEvent(new MouseEvent("click", {bubbles: true}));
+                    document.querySelector("div[class^='crimeOptionSection'] button.torn-btn").click();
+                }
+            }
+            c.childNodes[3].innerHTML = que+stock;
+
+            let color = "color: var(--default-green-color)";
+            if(que+stock < prefs.min_stock * ratio){
+                color = "color: var(--default-red-color)";
+            }
+            c.childNodes[3].style = color;
+            if(!(minc <= (que+stock)/ratio)){
+                minc = (que+stock)/ratio;
+                mind = c.childNodes[3];
+            }
+        }
+
+        if(mind){
+           mind.innerHTML = mind.textContent + " Next";
+           mind.style = "animation: crimeblinker 1s linear infinite; color: var(--default-red-color);";
+        }
+
+        setTimeout(update, 1000);
+    }
+
+    setTimeout(update, 1000);
+})();

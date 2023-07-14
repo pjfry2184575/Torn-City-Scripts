@@ -1,0 +1,240 @@
+// ==UserScript==
+// @name         Market Monitor
+// @namespace    http://github.com/MCSH
+// @version      0.9
+// @description  try to take over the world!
+// @author       MCSH
+// @match        https://www.torn.com/*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
+// @grant        GM.setValue
+// @grant        GM.getValue
+// @grant        GM.xmlHttpRequest
+// @updateURL    https://gist.github.com/MCSH/c8f8195ce65f391d63dbfede8e00c8f4/raw/market_monitor.user.js
+// @connect      api.torn.com
+// @require      https://cdn.jsdelivr.net/npm/duration-js@4.0.0/duration.min.js
+// @run-at       document-start
+// ==/UserScript==
+
+(async function() {
+    'use strict';
+
+    let baz_body;
+
+    const style = document.createElement("style");
+    style.innerHTML = `
+    .marketmonitorroot li {
+       line-height: 14px;
+       padding: 5px 0;
+       font-weight: 700;
+       display: flex;
+       justify-content: space-between;
+    }
+    `;
+    document.head.append(style);
+
+    var is_hidden = await GM.getValue("market_prefs_hidden", false);
+    var prefs = JSON.parse(await GM.getValue("market_data", '{"api_key": "", "watch_bazaar": "", "right_align": false}'));
+
+    if (!prefs) {
+        //JSON.parse() should never return any value that type-casts to false, assume there is an
+        //   error in the input string
+        console.warn('Error! JSON.parse failed - The stored value for "prefs" is likely to be corrupted.');
+        throw "GM Storage Error";
+    }
+
+    if(!prefs.watch_bazaar) prefs.watch_bazaar = "";
+    if(!prefs.right_align) prefs.right_align = false;
+
+    console.log(prefs);
+
+    function updatePref(){
+        GM.setValue('market_data', JSON.stringify(prefs));
+    }
+
+    async function redraw_market(){
+        if(!prefs.lastRefresh){
+            baz_body.innerHTML = "Load data to begin";
+            return ;
+        }
+
+        baz_body.innerHTML = `<a id="last_update" style="color: var(--default-blue-color); text-decoration: none;" href="#"></a>`;
+        baz_body.querySelector("#last_update").onclick = (e)=>{
+            refresh_market();
+        }
+
+        const par = document.createElement("ul");
+        par.className = "marketmonitorroot";
+        par.innerHTML = `
+        <li style="width: 100%">
+          <span style="width: 50%;"> Item </span>
+          <span style="width: 25%;padding: 0 5px;"> My Price </span>
+          <span style="width: 25%;"> Market </span>
+        </li>
+        `;
+        for(const item of prefs.bazaar){
+
+            let color = "var(--default-color)";
+
+            if(item.market_price && item.market_price < item.price){
+                color = "var(--default-red-color)";
+            }
+
+
+            const tr = document.createElement("li");
+            tr.style = "width: 100%";
+            tr.innerHTML = `<span style="width: 50%;"><a style="color: var(--default-blue-color); text-decoration: none;" target=_blank href="https://www.torn.com/imarket.php#/p=shop&step=shop&type=&searchname=${item.name}">${item.name}</a></span><span style="width: 25%;padding: 0 5px; color: ${color};">$${Intl.NumberFormat().format(item.price)}</span><span style="width: 25%;"><a style="color: var(--default-blue-color); text-decoration: none;" href="#">$${Intl.NumberFormat().format(item.market_price)}</a></span>`;
+            tr.childNodes[2].childNodes[0].onclick = ()=>{
+                console.log("HERE?");
+                item.market_price = 0;
+                tr.childNodes[2].innerHTML = 0;
+                fetch_price(item);
+            }
+            par.appendChild(tr);
+        }
+
+        baz_body.appendChild(par);
+    }
+
+    function fetch_price(item){
+        const API_KEY = prefs.api_key;
+
+        GM.xmlHttpRequest({
+            url: `https://api.torn.com/market/${item.ID}?selections=bazaar,itemmarket&key=${API_KEY}`,
+            method: "GET",
+            onload: (response)=>{
+                var result = JSON.parse(response.responseText);
+                if (result == undefined) {
+                    alert("refresh market failed, torn api error");
+                    return;
+                }
+                item.market_price = Math.min(result.bazaar[0].cost, result.itemmarket[0].cost);
+                updatePref();
+                redraw_market();
+            }
+        });
+    }
+
+    function refresh_market(){
+        const API_KEY = prefs.api_key;
+
+        GM.xmlHttpRequest({
+            url: `https://api.torn.com/user/${prefs.watch_bazaar}?selections=bazaar&key=${API_KEY}`,
+            method: "GET",
+            onload: (response)=>{
+                var result = JSON.parse(response.responseText);
+                if (result == undefined) {
+                    alert("refresh market failed, torn api error");
+                    return;
+                }
+                for(let item of result.bazaar){
+                    item.market_price = 0;
+                    fetch_price(item);
+                }
+                prefs.bazaar = result.bazaar;
+                prefs.lastRefresh = Date.now()
+                updatePref();
+                redraw_market();
+            }
+        });
+    }
+
+    window.addEventListener('load', ()=>{
+        const sidebar = document.querySelector("#sidebarroot");
+        const body = sidebar.parentElement.parentElement;
+        const div = document.createElement("div");
+        let maxW = sidebar.getBoundingClientRect().x;
+
+        if(document.documentElement.classList.contains("tt-align-left")){
+            prefs.right_align = true;
+            maxW = sidebar.getBoundingClientRect().right * 1.5;
+        }
+
+
+        //div.className = 'sidebar-block___Ef1l1 desktop___aYLqo';
+        div.style = `position: sticky; float: ${prefs.right_align?'right':'left'}; top: 3px;width: ${maxW-18}px; x: 5px; color: var(--default-color); padding: 8px 10px 0;`;
+        div.innerHTML = `
+        <div style="padding-left: 10px; height: 30px; font-size: 13px; display: flex;white-space: nowrap; background: var(--appheader-tutorial-title-background); border-radius: 5px 5px 0 0; align-items: center;">
+           <div style="width: -webkit-fill-available; vertical-align: baseline;">
+               Config
+           </div>
+           <i id="drawer_btn" class="fas fa-caret-down" style="min-width: 30px; font-size: 16px; text-align: center; position: static !important; margin: auto;"></i>
+           </div>
+           <div style="background-color: var(--default-bg-panel-color);">
+
+             <div style="display: flex; width: 100%; justify-content: space-evenly;">
+               <div id="drawer_body" style="padding: 10px 0px;" >
+                   Update your key:
+                   <input id="api_key"></input>
+                   <button type="submit" id="update_api_key" style="margin-top: 10px;" class="torn-btn">Update Key</button>
+                   <button type="submit" id="refresh_market" style="margin-top: 10px;" class="torn-btn">Refresh</button>
+                   <br />
+                   Watch this users bazaar:
+                   <input id="watch_bazaar" style="width: 100px"></input>
+                   <br/>
+                   <button type="submit" id="watch_btn" style="margin-top: 10px;" class="torn-btn">Watch</button>
+                   <br />
+                   <button type="submit" id="toggle_lr" style="margin-top: 10px;" class="torn-btn">Toggle Left Right</button>
+               </div>
+             </div>
+
+        </div>
+        <div id="baz_body" style="background: var(--default-bg-panel-color); margin-top: 10px;">
+         </div>
+
+        `;
+
+        div.querySelector("#watch_bazaar").value = prefs.watch_bazaar;
+        div.querySelector("#api_key").value = prefs.api_key;
+
+        const parent = div.querySelector("#drawer_body");
+        baz_body = div.querySelector("#baz_body");
+
+        div.querySelector("#drawer_btn").onclick = ()=>{
+            parent.hidden = !parent.hidden;
+            GM.setValue('market_prefs_hidden', parent.hidden);
+        };
+
+        div.querySelector("#update_api_key").onclick = ()=>{
+            prefs.api_key = div.querySelector("#api_key").value;
+            updatePref();
+            refresh_market(baz_body);
+        };
+
+        div.querySelector("#refresh_market").onclick = ()=>{
+            refresh_market(baz_body);
+        };
+
+        div.querySelector("#watch_btn").onclick = () =>{
+            prefs.watch_bazaar = div.querySelector("#watch_bazaar").value;
+            updatePref();
+            refresh_market(baz_body);
+        };
+
+        div.querySelector("#toggle_lr").onclick = () =>{
+            prefs.right_align = !prefs.right_align;
+            updatePref();
+            alert("Will take effect on next reload");
+        };
+
+        parent.hidden = is_hidden;
+
+        if(!prefs.right_align){
+            sidebar.parentElement.style = "float: left;";
+        }
+        body.firstChild.before(div);
+
+        redraw_market(baz_body);
+
+        setInterval(()=>{
+            const p = document.querySelector("#last_update");
+            if(p){
+                const dur = new Duration(Date.now() - prefs.lastRefresh);
+                dur.roundTo(1000);
+                p.innerHTML = `Last update: ${dur.toString()}`
+            }
+        }, 1000);
+
+    });
+
+
+})();
