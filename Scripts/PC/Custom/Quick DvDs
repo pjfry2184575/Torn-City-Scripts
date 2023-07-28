@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Quick DVD
 // @namespace    sportshead.dev
-// @version      0.5
+// @version      0.6
 // @description  Helps you to quickly use all your nerve copying DVDs
 // @author       sportzpikachu [2413105]
 // @match        https://www.torn.com/loader.php?sid=crimes*
@@ -26,6 +26,51 @@
 
     let observer;
 
+    const oldFetch = window.fetch;
+    const newFetch = async (...args) => {
+        const res = await oldFetch(...args);
+
+        if (
+            window.location.hash === "#/bootlegging" &&
+            args[0]?.includes("crimesData")
+        ) {
+            try {
+                const copy = res.clone();
+
+                const obj = await res.json();
+
+                const cds = { ...obj.DB.generalInfo.CDs };
+                obj.DB.crimesByType[0].additionalInfo.currentQueue.forEach(
+                    (c) => cds[c]++,
+                );
+
+                let least = cds[1];
+                let genre = 1;
+
+                for (let i = 2; i < 9; i++) {
+                    if (cds[i] < least) {
+                        least = cds[i];
+                        genre = i;
+                    }
+                }
+
+                console.log(cds, least, genre);
+                localStorage.quickdvdLeast = genre;
+                if (localStorage.quickdvdMode === "LST") {
+                    $("#quickdvd_i").text(
+                        isMobileMedia()
+                            ? GENRES[genre].charAt(0)
+                            : GENRES[genre],
+                    );
+                }
+                return copy;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        return res;
+    };
+
     function attach() {
         localStorage.quickdvd ??= 1;
         localStorage.quickdvdLeast ??= 0;
@@ -36,13 +81,23 @@
             }</a>`,
         );
         $("#quickdvd").on("click", () => {
-            fetch(
+            newFetch(
                 `https://www.torn.com/loader.php?sid=crimesData&step=attempt&value1=${
                     {
                         SEQ: localStorage.quickdvd,
                         LST: localStorage.quickdvdLeast,
                     }[localStorage.quickdvdMode]
-                }&typeID=2&crimeID=8`,
+                }&typeID=2&crimeID=8&rfcv=${
+                    document.cookie
+                        .split("; ")
+                        .map((c) => c.split("="))
+                        .find(([k]) => k === "rfc_v")?.[1]
+                }`,
+                {
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                },
             );
             if (localStorage.quickdvdMode === "SEQ") {
                 if (++localStorage.quickdvd > 8) {
@@ -102,47 +157,7 @@
             });
         }
     }
-    const oldFetch = window.fetch;
-    const newFetch = async (...args) => {
-        const res = await oldFetch(...args);
 
-        if (window.location.hash === "#/bootlegging" && args[0]?.includes("crimesData")) {
-            try {
-                const copy = res.clone();
-
-                const obj = await res.json();
-
-                const cds = { ...obj.DB.generalInfo.CDs };
-                obj.DB.crimesByType[0].additionalInfo.currentQueue.forEach(
-                    (c) => cds[c]++,
-                );
-
-                let least = cds[1];
-                let genre = 1;
-
-                for (let i = 2; i < 9; i++) {
-                    if (cds[i] < least) {
-                        least = cds[i];
-                        genre = i;
-                    }
-                }
-
-                console.log(cds, least, genre);
-                localStorage.quickdvdLeast = genre;
-                if (localStorage.quickdvdMode === "LST") {
-                    $("#quickdvd_i").text(
-                        isMobileMedia()
-                            ? GENRES[genre].charAt(0)
-                            : GENRES[genre],
-                    );
-                }
-                return copy;
-            } catch (e) {
-                console.error(e);
-            }
-        }
-        return res;
-    };
     function hashHandler() {
         if (window.location.hash === "#/bootlegging") {
             window.fetch = newFetch;
