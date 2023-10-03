@@ -11,7 +11,7 @@
 // @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
-const apikey = 'jK6TqDeupm8kMUDU'
+const apikey = 'AddApiKeyHere'
 
 const torn_api = async (args) => {
   const a = args.split('.')
