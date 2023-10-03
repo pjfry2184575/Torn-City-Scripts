@@ -1,1 +1,119 @@
-In the process of being made.
+// ==UserScript==
+// @name         Trade Chat Timer
+// @namespace    https://www.torn.com/profiles.php?XID=1936821
+// @version      1.0
+// @description  Show a timer that shows the amount left to post next message.
+// @author       TheFoxMan
+// @match        https://www.torn.com/*
+// @run-at       document-start
+// @grant        unsafeWindow
+// ==/UserScript==
+
+const STORAGE_KEY = "localStorage__Trade_Chat_Timer__Do_Not_Edit";
+
+if (!document.find)
+	Object.defineProperties(Document.prototype, {
+		find: {
+			value(selector) {
+				return document.querySelector(selector);
+			},
+			enumerable: false
+		},
+		findAll: {
+			value(selector) {
+				return document.querySelectorAll(selector);
+			},
+			enumerable: false
+		}
+	});
+
+if (!Element.prototype.find)
+	Object.defineProperties(Element.prototype, {
+		find: {
+			value(selector) {
+				return this.querySelector(selector);
+			},
+			enumerable: false
+		},
+		findAll: {
+			value(selector) {
+				return this.querySelectorAll(selector);
+			},
+			enumerable: false
+		}
+	});
+
+async function waitFor(sel, parent = document) {
+	return new Promise((resolve) => {
+		const intervalID = setInterval(() => {
+			const el = parent.find(sel);
+			if (el) {
+				resolve(el);
+				clearInterval(intervalID);
+			}
+		}, 500);
+	});
+}
+
+(async () => {
+	await waitFor("head style");
+
+	document.head.insertAdjacentHTML("beforeend", `<style>
+	[class*="_trade_1pskg_"] [class*="_chat-box-head_"] [class*="_icon_"]::after {
+		content: "NL";
+		background-color: yellow;
+		padding: 5px;
+		position: absolute;
+		top: 5px;
+	}
+
+	[class*="_trade_1pskg_"] [class*="_chat-box-head_"] .time-left[class*="_icon_"]::after {
+		content: attr(data-time-left);
+		background-color: red;
+	}
+
+	[class*="_trade_1pskg_"] [class*="_chat-box-head_"] .time-complete[class*="_icon_"]::after {
+		content: "OK";
+		background-color: green;
+	}
+	</style>`);
+
+	const tradeChatHead = await waitFor("#chatRoot [class*='_trade_1pskg_'] [class*='_chat-box-head_']");
+	const tradeChatIcon = tradeChatHead.find("i[class*='_icon_']");
+
+	const chatParent = tradeChatHead.closest("#chatRoot [class*='_chat-box_'][class*='_trade_']");
+
+	setInterval(() => {
+		const timestamp = parseInt(window.localStorage.getItem(STORAGE_KEY) ?? "0");
+		if (timestamp !== 0) {
+			const timeLeft = Math.floor(60 - ((Date.now() - timestamp) / 1000));
+			if (timeLeft > 0) {
+				tradeChatIcon.classList.remove("time-complete");
+				tradeChatIcon.classList.add("time-left");
+				tradeChatIcon.setAttribute("data-time-left", timeLeft);
+			} else {
+				tradeChatIcon.classList.add("time-complete");
+				tradeChatIcon.classList.remove("time-left");
+				tradeChatIcon.setAttribute("data-time-left", 0);
+			}
+		}
+	}, 1000);
+
+	if (chatParent.className.includes("chat-active")) {
+		chatParent.find("textarea").addEventListener("keydown", (e) => {
+			if (e.key === "Enter") {
+				window.localStorage.setItem(STORAGE_KEY, Date.now());
+			}
+		});
+	}
+
+	tradeChatHead.addEventListener("click", () => {
+		if (chatParent.className.includes("chat-active")) {
+			chatParent.find("textarea").addEventListener("keydown", (e) => {
+				if (e.key === "Enter") {
+					window.localStorage.setItem(STORAGE_KEY, Date.now());
+				}
+			});
+		}
+	});
+})();
