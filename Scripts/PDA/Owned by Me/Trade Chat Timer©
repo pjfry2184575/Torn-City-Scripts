@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Trade Chat Timer
 // @namespace    https://www.torn.com/profiles.php?XID=1936821
-// @version      1.0
+// @version      1.3
 // @description  Show a timer that shows the amount left to post next message.
 // @author       TheFoxMan
 // @match        https://www.torn.com/*
@@ -78,14 +78,48 @@ async function waitFor(sel, parent = document) {
 	}
 	</style>`);
 
-	const tradeChatHead = await waitFor("#chatRoot [class*='_trade_1pskg_'] [class*='_chat-box-head_']");
-	const tradeChatIcon = tradeChatHead.find("i[class*='_icon_']");
+	let tradeChatHead = await waitFor("#chatRoot [class*='_trade_1pskg_'] [class*='_chat-box-head_']");
+	let tradeChatIcon = tradeChatHead.find("i[class*='_icon_']");
 
-	const chatParent = tradeChatHead.closest("#chatRoot [class*='_chat-box_'][class*='_trade_']");
+	let chatParent = tradeChatHead.closest("#chatRoot [class*='_chat-box_'][class*='_trade_']");
 
-	setInterval(() => {
-		const timestamp = parseInt(window.localStorage.getItem(STORAGE_KEY) ?? "0");
-		if (timestamp !== 0) {
+	if (chatParent.className.includes("chat-active")) {
+		chatParent.find("textarea").addEventListener("keydown", (e) => {
+			if (e.key === "Enter") {
+				window.localStorage.setItem(STORAGE_KEY, Date.now());
+			}
+		});
+	}
+
+	tradeChatHead.addEventListener("click", async () => {
+		if (!chatParent.className.includes("chat-active")) {
+			await waitFor("#chatRoot [class*='_trade_1pskg_'] textarea");
+			chatParent.find("textarea").addEventListener("keydown", (e) => {
+				if (e.key === "Enter") {
+					window.localStorage.setItem(STORAGE_KEY, Date.now());
+				}
+			});
+		}
+	});
+
+	func();
+	setInterval(func, 1000);
+
+	document.addEventListener("click", async (e) => {
+		if (!e.target.matches("#chatRoot [class*='_trade_1pskg_'] [class*='_chat-box-head_']")) return;
+
+		tradeChatHead = await waitFor("#chatRoot [class*='_trade_1pskg_'] [class*='_chat-box-head_']");
+		tradeChatIcon = tradeChatHead.find("i[class*='_icon_']");
+
+		chatParent = tradeChatHead.closest("#chatRoot [class*='_chat-box_'][class*='_trade_']");
+	});
+
+	function func() {
+		if (!window.localStorage.getItem(STORAGE_KEY))
+			window.localStorage.setItem(STORAGE_KEY, Date.now());
+
+		const timestamp = parseInt(window.localStorage.getItem(STORAGE_KEY));
+		if (timestamp > 0) {
 			const timeLeft = Math.floor(60 - ((Date.now() - timestamp) / 1000));
 			if (timeLeft > 0) {
 				tradeChatIcon.classList.remove("time-complete");
@@ -97,23 +131,5 @@ async function waitFor(sel, parent = document) {
 				tradeChatIcon.setAttribute("data-time-left", 0);
 			}
 		}
-	}, 1000);
-
-	if (chatParent.className.includes("chat-active")) {
-		chatParent.find("textarea").addEventListener("keydown", (e) => {
-			if (e.key === "Enter") {
-				window.localStorage.setItem(STORAGE_KEY, Date.now());
-			}
-		});
 	}
-
-	tradeChatHead.addEventListener("click", () => {
-		if (chatParent.className.includes("chat-active")) {
-			chatParent.find("textarea").addEventListener("keydown", (e) => {
-				if (e.key === "Enter") {
-					window.localStorage.setItem(STORAGE_KEY, Date.now());
-				}
-			});
-		}
-	});
 })();
