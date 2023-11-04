@@ -1,0 +1,1029 @@
+// ==UserScript==
+// @name         TORN: Better Chat
+// @namespace    dekleinekobini.betterchat
+// @license      GPL-3
+// @version      2.3.1
+// @description  Improvements to the usability of chats 2.0.
+// @author       DeKleineKobini [2114440]
+// @match        https://www.torn.com/*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=torn.com
+// @run-at       document-start
+// @grant        GM_addStyle
+// ==/UserScript==
+ 
+"use strict";
+ 
+class CommonUtilities {
+    static _currentPlayerName;
+ 
+    static TEXT_COLORS = {
+        "torntools-green": "#7ca900",
+    };
+ 
+    static mergeRecursive(target, otherObject) {
+        for (const key in otherObject) {
+            try {
+                if (typeof otherObject[key] == "object" && !Array.isArray(otherObject[key])) {
+                    target[key] = CommonUtilities.mergeRecursive(target[key], otherObject[key]);
+                } else {
+                    target[key] = otherObject[key];
+                }
+            } catch (e) {
+                target[key] = otherObject[key];
+            }
+        }
+ 
+        return target;
+    }
+ 
+    static findByClass(node, className, subSelector = "") {
+        return node.querySelector(`[class*='${className}'] ${subSelector}`.trim());
+    }
+ 
+    static findAllByClass(node, className, subSelector = "") {
+        return [...node.querySelectorAll(`[class*='${className}'] ${subSelector}`.trim())];
+    }
+ 
+    static baseColor(color) {
+        if (color in CommonUtilities.TEXT_COLORS) color = CommonUtilities.TEXT_COLORS[color];
+ 
+        return color;
+    }
+ 
+    static convertColor(color) {
+        color = CommonUtilities.baseColor(color);
+ 
+        return color.length === 7 ? `${color}6e` : color;
+    }
+ 
+    static getCurrentPlayerName() {
+        if (CommonUtilities._currentPlayerName) {
+            return CommonUtilities._currentPlayerName;
+        }
+ 
+        const websocketElement = document.getElementById("websocketConnectionData");
+        if (websocketElement) {
+            const data = JSON.parse(websocketElement.textContent);
+ 
+            CommonUtilities._currentPlayerName = data.playername;
+            return data.playername;
+        }
+ 
+        const sidebarElement = CommonUtilities.findByClass(document, "menu-value___");
+        if (sidebarElement) {
+            CommonUtilities._currentPlayerName = sidebarElement.textContent;
+            // Get name from the sidebar
+            return sidebarElement.textContent;
+        }
+ 
+        const attackerElement = document.querySelector(".user-name.left");
+        if (attackerElement) {
+            CommonUtilities._currentPlayerName = attackerElement.textContent;
+            // Attack name
+            return attackerElement.textContent;
+        }
+ 
+        const chatSenderElement = document.querySelector("[class*='chat-box-body__message-box--self___'] [class*='chat-box-body__sender___']");
+        if (chatSenderElement) {
+            let name = chatSenderElement.textContent;
+            name = name.substring(0, name.length - 1);
+ 
+            CommonUtilities._currentPlayerName = name;
+            return name;
+        }
+ 
+        console.warn("[Better Chat] Failed to get the current player's name.");
+        return "unknown current player";
+    }
+ 
+    static async sleep(millis) {
+        return new Promise((resolve) => setTimeout(resolve, millis));
+    }
+}
+ 
+class BetterChatSettings {
+    static SETTINGS_KEY = "better-chat-settings";
+ 
+    static DEFAULT_SETTINGS = {
+        messages: {
+            hideAvatars: true,
+            compact: true,
+            leftAlignedText: true, // left align all text, prefixed by the name (supports the mini-profile as well), even for private chats
+            highlight: [
+                // Colors can be specified as:
+                // - hex color (include #, only full format = 6 numbers)
+                // - custom colors (check below); "torntools-green"
+                // Search is just text, except "%player%" where it used the current players name.
+                {id: 0, color: "torntools-green", search: "%player%"},
+            ],
+            fontSize: {
+                enabled: false,
+                size: 12,
+            }
+        },
+        box: {
+            groupRight: true, // opening chat logic to put private chat left of group chats
+            hideAvatars: true,
+            nameAutocomplete: false,
+        },
+        people: {
+            sortOnStatus: true,
+        },
+        accessibility: {
+            describeButtons: true,
+            presentationSender: true,
+        },
+    };
+ 
+    constructor() {
+        this._settings = this._loadSettings();
+    }
+ 
+    _loadSettings() {
+        const storedSettings = localStorage.getItem(BetterChatSettings.SETTINGS_KEY);
+        const settings = storedSettings ? JSON.parse(storedSettings) : {};
+ 
+        const defaultSettings = BetterChatSettings.DEFAULT_SETTINGS;
+        CommonUtilities.mergeRecursive(defaultSettings, settings);
+ 
+        return defaultSettings;
+    }
+ 
+    save() {
+        localStorage.setItem(BetterChatSettings.SETTINGS_KEY, JSON.stringify(this._settings));
+    }
+ 
+    get messages() {
+        return this._settings.messages;
+    }
+ 
+    get box() {
+        return this._settings.box;
+    }
+ 
+    get accessibility() {
+        return this._settings.accessibility;
+    }
+ 
+    get people() {
+        return this._settings.people;
+    }
+ 
+    showSettingsIcon(panel) {
+        if (panel.querySelector("#better-chat-settings-icon")) return;
+ 
+        const icon = this._createScriptSettingsIcon();
+ 
+        const panelHeader = CommonUtilities.findByClass(panel, "chat-list-header__actions___");
+        panelHeader.insertAdjacentElement("afterbegin", icon);
+    }
+ 
+    _createScriptSettingsIcon() {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.ariaLabel = "Better Chat settings";
+        button.textContent = "BS";
+        button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            this._showScriptSettings();
+        }, {capture: true});
+ 
+        const icon = document.createElement("div");
+        icon.id = "better-chat-settings-icon";
+        icon.appendChild(button);
+ 
+        return icon;
+    }
+ 
+    _showScriptSettings() {
+        if (document.querySelector(".better-chat-settings-overlay")) return;
+ 
+        const popup = this._createPopup();
+ 
+        const overlay = this._createOverlay();
+        overlay.appendChild(popup);
+        document.body.appendChild(overlay);
+ 
+        popup.focus();
+    }
+ 
+    _createPopup() {
+        const popup = document.createElement("div");
+        popup.classList.add("better-chat-settings-popup");
+        popup.setAttribute("autofocus", "");
+        popup.setAttribute("tabindex", "0");
+ 
+        appendTitle("Better Chat - Settings");
+        appendDescription("You can change your Better Chat settings here. Reload after changes to apply them.");
+ 
+        appendSubtitle("Messages");
+        appendCheckbox(
+            "messages-hideAvatars",
+            "Hide avatars in the messages.",
+            () => settings.messages.hideAvatars,
+            (newValue) => settings.messages.hideAvatars = newValue,
+        );
+        appendCheckbox(
+            "messages-compact",
+            "Make the chat significantly compacter.",
+            () => settings.messages.compact,
+            (newValue) => settings.messages.compact = newValue,
+        );
+        appendCheckbox(
+            "messages-leftAlignedText",
+            "Left align all messages.",
+            () => settings.messages.leftAlignedText,
+            (newValue) => settings.messages.leftAlignedText = newValue,
+        );
+        // Append font size
+        {
+            const inputId = `setting-font-size`;
+ 
+            const checkbox = document.createElement("input");
+            checkbox.checked = settings.messages.fontSize.enabled;
+            checkbox.id = inputId;
+            checkbox.type = "checkbox";
+            checkbox.addEventListener("change", (event) => {
+                settings.messages.fontSize.enabled = event.currentTarget.checked;
+                settings.save();
+            }, {capture: true});
+ 
+            const label = document.createElement("label");
+            label.setAttribute("for", inputId);
+            label.innerText = "Font size";
+ 
+            const sizeInput = document.createElement("input");
+            sizeInput.value = settings.messages.fontSize.size;
+            sizeInput.type = "number";
+            sizeInput.addEventListener("change", (event) => {
+                settings.messages.fontSize.size = parseInt(event.currentTarget.value);
+                settings.save();
+            }, {capture: true});
+            sizeInput.style.width = "40px";
+            sizeInput.style.marginLeft = "2px";
+ 
+            const section = document.createElement("section");
+            section.appendChild(checkbox);
+            section.appendChild(label);
+            section.appendChild(sizeInput);
+ 
+            popup.appendChild(section);
+        }
+ 
+        appendSubtitle("Boxes");
+        appendCheckbox(
+            "box-groupRight",
+            "Move group chats to always be to the right of private chats.",
+            () => settings.box.groupRight,
+            (newValue) => settings.box.groupRight = newValue,
+        );
+        appendCheckbox(
+            "box-hideAvatars",
+            "Hide avatars in the boxes.",
+            () => settings.box.hideAvatars,
+            (newValue) => settings.box.hideAvatars = newValue,
+        );
+        appendCheckbox(
+            "box-autocomplete",
+            "Autocomplete when entering an message inside of a group box.",
+            () => settings.box.nameAutocomplete,
+            (newValue) => settings.box.nameAutocomplete = newValue,
+        );
+ 
+        appendSubtitle("Highlights");
+        appendHighlightList(
+            () => settings.messages.highlight,
+            ({search, color}) => {
+                const removeIndex = settings.messages.highlight.findLastIndex((highlight) => highlight.search === search && highlight.color === color);
+ 
+                settings.messages.highlight = settings.messages.highlight.filter((highlight, index) => index !== removeIndex);
+            },
+            (item) => settings.messages.highlight.push(item),
+        );
+ 
+        appendSubtitle("People");
+        appendCheckbox(
+            "people-sortOnStatus",
+            "Sort players in the people tab based on status.",
+            () => settings.people.sortOnStatus,
+            (newValue) => settings.people.sortOnStatus = newValue,
+        );
+ 
+        appendSubtitle("Accessibility");
+        appendCheckbox(
+            "accessibility-describeButtons",
+            "Describe (most) buttons, for users with a screen reader.",
+            () => settings.accessibility.describeButtons,
+            (newValue) => settings.accessibility.describeButtons = newValue,
+        );
+        appendCheckbox(
+            "accessibility-presentationSender",
+            "Don't read out the button role of the sender.",
+            () => settings.accessibility.presentationSender,
+            (newValue) => settings.accessibility.presentationSender = newValue,
+        );
+ 
+        return popup;
+ 
+        function appendTitle(title) {
+            const titleElement = document.createElement("span");
+            titleElement.classList.add("better-chat-settings-title");
+            titleElement.textContent = title;
+ 
+            const closeElement = document.createElement("button");
+            closeElement.classList.add("better-chat-settings-close-popup");
+            closeElement.textContent = "X";
+            closeElement.addEventListener("click", () => {
+                [...document.getElementsByClassName("better-chat-settings-overlay")].forEach(overlay => overlay.remove());
+            });
+            closeElement.ariaLabel = "Close better chat settings";
+ 
+            const titleWrapper = document.createElement("div");
+            titleWrapper.classList.add("better-chat-settings-title-wrapper");
+            titleWrapper.appendChild(titleElement);
+            titleWrapper.appendChild(closeElement);
+ 
+            popup.appendChild(titleWrapper);
+        }
+ 
+        function appendDescription(title) {
+            const titleElement = document.createElement("span");
+            titleElement.classList.add("better-chat-settings-description");
+            titleElement.innerText = title;
+ 
+            popup.appendChild(titleElement);
+        }
+ 
+        function appendSubtitle(title) {
+            const titleElement = document.createElement("span");
+            titleElement.classList.add("better-chat-settings-subtitle");
+            titleElement.innerText = title;
+ 
+            popup.appendChild(titleElement);
+        }
+ 
+        function appendCheckbox(id, labelText, valueGetter, valueSetter) {
+            const inputId = `setting-${id}`;
+ 
+            const input = document.createElement("input");
+            input.checked = valueGetter();
+            input.id = inputId;
+            input.type = "checkbox";
+            input.addEventListener("change", (event) => {
+                valueSetter(event.currentTarget.checked);
+                settings.save();
+            }, {capture: true});
+ 
+            const label = document.createElement("label");
+            label.setAttribute("for", inputId);
+            label.innerText = labelText;
+ 
+            const section = document.createElement("section");
+            section.appendChild(input);
+            section.appendChild(label);
+ 
+            popup.appendChild(section);
+        }
+ 
+        function appendHighlightList(valueGetter, valueRemover, valueAdder) {
+            const list = document.createElement("ul");
+ 
+            valueGetter().forEach((item) => appendRow(item));
+ 
+            const addButton = document.createElement("button");
+            addButton.textContent = "add";
+            addButton.addEventListener("click", () => {
+                const item = {search: "%player%", color: "#7ca900"};
+ 
+                valueAdder(item);
+                appendRow(item, true);
+                settings.save();
+            });
+            list.appendChild(addButton);
+ 
+            popup.appendChild(list);
+ 
+            function appendRow(item, beforeButton = false) {
+                const itemElement = document.createElement("li");
+                itemElement.classList.add("better-chat-settings-highlight-entry");
+ 
+                const searchInput = document.createElement("input");
+                searchInput.type = "text";
+                searchInput.placeholder = "Search...";
+                searchInput.value = item.search;
+                searchInput.addEventListener("change", (event) => {
+                    item.search = event.currentTarget.value;
+                    settings.save();
+                });
+                itemElement.appendChild(searchInput);
+ 
+                const colorInput = document.createElement("input");
+                colorInput.type = "color";
+                colorInput.value = CommonUtilities.baseColor(item.color);
+                colorInput.addEventListener("change", (event) => {
+                    item.color = event.currentTarget.value;
+                    settings.save();
+                });
+                itemElement.appendChild(colorInput);
+ 
+                const removeButton = document.createElement("button");
+                removeButton.textContent = "remove";
+                removeButton.addEventListener("click", () => {
+                    itemElement.remove();
+                    valueRemover(item);
+                    settings.save();
+                });
+                itemElement.appendChild(removeButton);
+ 
+                if (beforeButton) {
+                    list.insertBefore(itemElement, addButton);
+                } else {
+                    list.appendChild(itemElement);
+                }
+            }
+        }
+    }
+ 
+    _createOverlay() {
+        const overlay = document.createElement("div");
+        overlay.classList.add("better-chat-settings-overlay");
+        overlay.addEventListener("click", (event) => {
+            if (event.target !== overlay) return;
+ 
+            overlay.remove();
+        }, {once: true});
+ 
+        return overlay;
+    }
+}
+ 
+class ScriptEventHandler {
+ 
+    static onLoad() {
+        new MutationObserver((_, observer) => {
+            const group = CommonUtilities.findByClass(document, "group-chat-box___");
+            if (!group) return;
+ 
+            observer.disconnect();
+            ScriptEventHandler.onChatLoad(group);
+        }).observe(document, {childList: true, subtree: true});
+        new MutationObserver((_, observer) => {
+            const chatList = CommonUtilities.findByClass(document, "chat-app__chat-list-chat-box-wrapper___");
+            if (!chatList) return;
+ 
+            ScriptEventHandler._handlePanel(chatList);
+            new MutationObserver(
+                () => ScriptEventHandler._handlePanel(chatList)
+            ).observe(chatList, {childList: true});
+ 
+            observer.disconnect();
+        }).observe(document, {childList: true, subtree: true});
+ 
+        // Features
+        StylingFeature.defaultStyles();
+        StylingFeature.hideAvatars();
+        StylingFeature.compact();
+        StylingFeature.groupRight();
+        StylingFeature.leftAlignedText();
+        StylingFeature.fontSize();
+    }
+ 
+    static onChatLoad(root) {
+        // Detect chat openings.
+        root.childNodes.forEach(ScriptEventHandler.onChatOpened)
+        new MutationObserver(
+            (mutations) => mutations.flatMap((mutation) => [...mutation.addedNodes]).forEach(ScriptEventHandler.onChatOpened)
+        ).observe(root, {childList: true});
+ 
+        // Features
+        AccessibilityFeature.describeNotepad();
+        AccessibilityFeature.describePeople();
+    }
+ 
+    static onChatOpened(chat) {
+        // Detect chat messages.
+        const bodyElement = CommonUtilities.findByClass(chat, "chat-box-body___");
+        bodyElement.childNodes.forEach(ScriptEventHandler.onMessageReceived);
+        new MutationObserver(
+            (mutations) => mutations.flatMap((mutation) => [...mutation.addedNodes]).forEach(ScriptEventHandler.onMessageReceived)
+        ).observe(chat, {childList: true});
+        new MutationObserver(
+            () => bodyElement.childNodes.forEach(ScriptEventHandler.onMessageReceived)
+        ).observe(bodyElement, {childList: true});
+ 
+        // Features
+        AccessibilityFeature.describeChatButtons(chat);
+        ChatGroupFeature.moveGroupRight(chat);
+        ChatGroupFeature.nameAutocompletion(chat);
+    }
+ 
+    static onMessageReceived(message) {
+        if (message.querySelector(".color-chatError")) {
+            // This is a "Connecting to the server" message, don't process it.
+            return;
+        }
+ 
+        const senderElement = CommonUtilities.findByClass(message, "chat-box-body__sender___");
+ 
+        const currentPlayer = CommonUtilities.getCurrentPlayerName();
+        let senderName = senderElement.textContent.substring(0, senderElement.textContent.length - 1);
+        if (senderName === "newMessage") {
+            // Take the name from the sidebar.
+            senderElement.textContent = `${currentPlayer}:`;
+            senderName = currentPlayer;
+        }
+ 
+        // Features
+        AccessibilityFeature.describeMessageButtons(message, senderName);
+        MessageFeature.highlightMessages(message, senderName);
+    }
+ 
+    static onPeoplePanelLoad(panel) {
+        settings.showSettingsIcon(panel);
+        AccessibilityFeature.appPanelAccessibility(panel);
+    }
+ 
+    static onPeopleListLoad(content) {
+        PeopleStatusFeature.sortOnStatus(content);
+    }
+ 
+    static _handlePanel(chatList) {
+        const peoplePanel = CommonUtilities.findByClass(chatList, "chat-app__panel___");
+        if (peoplePanel && !peoplePanel.querySelector(".better-chat-found")) {
+            CommonUtilities.findByClass(peoplePanel, "chat-tab___").classList.add("better-chat-found");
+ 
+            ScriptEventHandler.onPeoplePanelLoad(peoplePanel);
+            new MutationObserver(() => {
+                ScriptEventHandler.onPeoplePanelLoad(peoplePanel);
+            }).observe(peoplePanel, {childList: true});
+        }
+ 
+        const tabSelector = CommonUtilities.findByClass(chatList, "chat-list-header__tabs___");
+        const tabContent = CommonUtilities.findByClass(chatList, "chat-tab-content___");
+        if (tabContent) {
+            new MutationObserver((mutations) => {
+                const hasRemovedLoader = mutations.flatMap((mutation) => [...mutation.removedNodes])
+                    .filter((node) => !!node)
+                    .map((node) => node.getAttribute("class"))
+                    .filter((className) => !!className)
+                    .find((className) => className.includes("chat-tab__loader___"));
+                if (!hasRemovedLoader) return;
+ 
+                ScriptEventHandler._handlePanelTab(tabSelector, tabContent);
+            }).observe(tabContent, {childList: true});
+ 
+            new Promise(async (resolve, reject) => {
+                let times = 0;
+                let element;
+ 
+                do {
+                    element = CommonUtilities.findByClass(document, "chat-list-header__tab--active___");
+ 
+                    if (!element) {
+                        await CommonUtilities.sleep(100);
+                    }
+                } while (!element && ++times < 1000);
+ 
+                if (element) resolve();
+                else reject();
+            }).then(() => {
+                const tabSelector = CommonUtilities.findByClass(chatList, "chat-list-header__tabs___");
+                const tabContent = CommonUtilities.findByClass(chatList, "chat-tab-content___");
+ 
+                ScriptEventHandler._handlePanelTab(tabSelector, tabContent);
+            });
+        }
+    }
+ 
+    static _handlePanelTab(tabSelector, tabContent) {
+        const activeTab = CommonUtilities.findByClass(tabSelector, "chat-list-header__tab--active___").textContent.toLowerCase();
+ 
+        if (activeTab !== "chats") {
+            ScriptEventHandler.onPeopleListLoad(tabContent);
+        }
+    }
+}
+ 
+class StylingFeature {
+ 
+    static includeStyle(styleRules) {
+        if (typeof GM_addStyle !== "undefined") {
+            GM_addStyle(styleRules);
+        } else {
+            const styleElement = document.createElement("style");
+            styleElement.setAttribute("type", "text/css");
+            styleElement.innerHTML = styleRules;
+            document.head.appendChild(styleElement);
+        }
+    }
+ 
+    static defaultStyles() {
+        StylingFeature.includeStyle(`
+            #better-chat-settings-icon {
+                align-self: center;
+            }
+ 
+            #better-chat-settings-icon button {
+                color: #f7f7f7;
+            }
+ 
+            .better-chat-settings-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                background-color: rgba(0, 0, 0, 0.5);
+                bottom: 0;
+                z-index: 1000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+ 
+            .better-chat-settings-popup {
+                width: 300px;
+                min-height: 300px;
+                padding: 4px;
+                overflow: auto;
+                max-height: 100vh;
+            }
+            
+            body:not(.dark-mode) .better-chat-settings-popup {
+                background-color: #f7f7f7;
+            }
+            
+            body.dark-mode .better-chat-settings-popup {
+                background-color: #414141;
+            }
+ 
+            .better-chat-settings-title-wrapper {
+                display: flex;
+                justify-content: space-between;
+            }
+ 
+            .better-chat-settings-title {
+                display: block;
+                font-size: 1.25em;
+                font-weight: bold;
+                margin-bottom: 2px;
+            }
+ 
+            .better-chat-settings-close-popup {
+                padding-inline: 5px;
+            }
+ 
+            .better-chat-settings-description {
+                display: block;
+                font-size: 0.9em;
+                margin-bottom: 2px;
+            }
+ 
+            .better-chat-settings-subtitle {
+                display: block;
+                font-weight: bold;
+                margin-bottom: 2px;
+            }
+ 
+            .better-chat-settings-subtitle:not(:first-child) {
+                margin-top: 4px;
+            }
+ 
+            .better-chat-settings-popup > section {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+                margin-bottom: 1px;
+            }
+ 
+            .better-chat-settings-popup button {
+                cursor: pointer;
+            }
+ 
+            body:not(.dark-mode) .better-chat-settings-popup button {
+            }
+ 
+            body.dark-mode .better-chat-settings-popup button {
+                color: #ddd;
+            }
+ 
+            .better-chat-settings-highlight-entry {
+                display: flex;
+                gap: 4px;
+            }
+        `);
+    }
+ 
+    static hideAvatars() {
+        if (settings.messages.hideAvatars) {
+            StylingFeature.includeStyle(`
+                [class*='chat-box-body__avatar___'] {
+                    display: none;
+                }
+            `);
+        }
+ 
+        if (settings.box.hideAvatars) {
+            StylingFeature.includeStyle(`
+                [class*='avatar__avatar-status-wrapper___'] > img {
+                    display: none;
+                }
+            `);
+        }
+    }
+ 
+    static compact() {
+        if (!settings.messages.compact) return;
+ 
+        StylingFeature.includeStyle(`
+            [class*='chat-box-body__wrapper___'] {
+                margin-bottom: 0px !important;
+            }
+ 
+            [class*='chat-box-body___'] > div:last-child {
+                margin-bottom: 8px !important;
+            }
+        `);
+    }
+ 
+    static groupRight() {
+        if (!settings.box.groupRight) return;
+ 
+        StylingFeature.includeStyle(`
+            [class*='group-chat-box___'] {
+                gap: 3px;
+            }
+ 
+            [class*='group-chat-box__chat-box-wrapper___'] {
+                margin-right: 0 !important;
+            }
+        `);
+    }
+ 
+    static leftAlignedText() {
+        if (!settings.messages.leftAlignedText) return;
+ 
+        StylingFeature.includeStyle(`
+            [class*='chat-box-body__sender___'] {
+                display: unset !important;
+                font-weight: 700;
+            }
+ 
+            [class*='chat-box-body__message-box___'] [class*='chat-box-body__sender___'] {
+                margin-right: 4px;
+            }
+ 
+            [class*='chat-box-body__message-box___'] {
+                background: none !important;
+                border-radius: none !important;
+                color: initial !important;
+                padding: 0 !important;
+            }
+ 
+            [class*='chat-box-body__message-box--self___'] {
+                background: none !important;
+                border-radius: none !important;
+                color: initial !important;
+                padding: 0 !important;
+            }
+ 
+            [class*='chat-box-body__wrapper--self___'] {
+                justify-content: normal !important;
+            }
+ 
+            [class*='chat-box-body__wrapper--self___'] > [class*='chat-box-body__message___'],
+            [class*='chat-box-body__message___'] {
+                color: var(--chat-text-color) !important;
+            }
+        `);
+    }
+ 
+    static fontSize() {
+        if (!settings.messages.fontSize.enabled) return;
+ 
+        const size = settings.messages.fontSize.size;
+ 
+        StylingFeature.includeStyle(`
+            [class*='chat-box-body__message___'],
+            [class*='chat-box-body__sender___'] {
+                font-size: ${size}px !important;
+            }
+            
+            #chatRoot {
+                --torntools-chat-font-size: ${size}px;
+            }
+        `);
+    }
+}
+ 
+class AccessibilityFeature {
+    static describeChatButtons(chat) {
+        if (!settings.accessibility.describeButtons) return;
+ 
+        [...chat.querySelectorAll("button:not(.better-chat-described), *[role='button'][tabindex]")]
+            .forEach((button) => AccessibilityFeature._describeChatButton(button));
+    }
+ 
+    static _describeChatButton(button) {
+        let description;
+ 
+        const svg = button.querySelector("svg");
+        if (svg) {
+            const className = svg.getAttribute("class") || "";
+ 
+            if (className.includes("minimize-icon")) {
+                description = "Minimize this chat";
+            } else if (className.includes("close-icon")) {
+                description = "Close this chat";
+            }
+        }
+ 
+        if (!description) {
+            // chat-box-header__info
+            const className = button.getAttribute("class");
+ 
+            if (className.includes("chat-box-header___")) {
+                description = "Minimize this chat";
+            } else if (className.includes("chat-box-footer__send-icon-wrapper___")) {
+                description = "Send your message";
+            } else if (className.includes("chat-box-body__sender-button___")) {
+                // This is the link to the message sender. Handle this in the message processing.
+                description = false;
+            } else if (className.includes("chat-box-header__info-btn___")) {
+                description = "Open possible actions";
+            } else if (className.includes("chat-box-header__info___")) {
+                // If this class is applied without the above 'btn' class, then it's a useless button.
+                description = false;
+            }
+        }
+ 
+        if (description) button.ariaLabel = description;
+        else if (description === false) {
+            // Don't describe this button.
+        } else console.warn("[Better Chat] Failed to describe this button.", button);
+ 
+        button.classList.add("better-chat-described");
+    }
+ 
+    static appPanelAccessibility(panel) {
+        CommonUtilities.findAllByClass(panel, "chat-list-header__button___")
+            .forEach((button) => AccessibilityFeature._describeAppPanelButton(button));
+    }
+ 
+    static _describeAppPanelButton(button) {
+        let description;
+ 
+        if (button.querySelector("#setting_default")) {
+            description = "Open chat settings"
+        } else if (button.querySelector("#_close_default_dark")) {
+            description = "Close chat settings";
+        } else console.warn("[Better Chat] Failed to describe this app panel button.", button);
+ 
+        button.ariaLabel = description;
+    }
+ 
+    static describeMessageButtons(message, senderName) {
+        if (!settings.accessibility.describeButtons) return;
+ 
+        const senderElement = CommonUtilities.findByClass(message, "chat-box-body__sender___");
+ 
+        if (settings.accessibility.presentationSender) {
+            const senderButton = CommonUtilities.findByClass(message, "chat-box-body__sender-button___");
+            senderButton.role = "presentation";
+ 
+            senderElement.role = "presentation";
+        } else if (settings.accessibility.describeButtons) {
+            senderElement.ariaLabel = `Open ${senderName}'s profile`
+        }
+    }
+ 
+    static describeNotepad() {
+        if (!settings.accessibility.describeButtons) return;
+ 
+        const notepadElement = CommonUtilities.findByClass(document, "chat-note-button___");
+        notepadElement.ariaLabel = "Open your notepad";
+    }
+ 
+    static describePeople() {
+        if (!settings.accessibility.describeButtons) return;
+ 
+        const peopleElement = CommonUtilities.findByClass(document, "chat-list-button___");
+        peopleElement.ariaLabel = "List all people";
+    }
+}
+ 
+class ChatGroupFeature {
+    static currentUsername = null;
+    static currentSearchValue = null;
+ 
+    static moveGroupRight(chat) {
+        if (!settings.box.groupRight) return;
+ 
+        const avatarElement = CommonUtilities.findByClass(chat, "chat-box-header__avatar___", "> *");
+        const isGroup = avatarElement.tagName.toLowerCase() === "svg";
+ 
+        if (isGroup) {
+            chat.style.order = "1";
+        }
+    }
+ 
+    static nameAutocompletion(chat) {
+        if (!settings.box.nameAutocomplete) return;
+ 
+        const avatarElement = CommonUtilities.findByClass(chat, "chat-box-header__avatar___", "> *");
+        const isGroup = avatarElement.tagName.toLowerCase() === "svg";
+        if (!isGroup) return;
+ 
+        const textarea = chat.querySelector("textarea");
+        textarea.addEventListener("keydown", (event) => {
+            if (event.code !== "Tab") {
+                ChatGroupFeature.currentUsername = null;
+                ChatGroupFeature.currentSearchValue = null;
+                return;
+            }
+            event.preventDefault();
+ 
+            const valueBeforeCursor = textarea.value.substring(0, textarea.selectionStart);
+            const searchValueMatch = valueBeforeCursor.match(/([^\w\-]?)([\w\-]*)$/);
+ 
+            if (ChatGroupFeature.currentSearchValue === null) ChatGroupFeature.currentSearchValue = searchValueMatch[2].toLowerCase();
+ 
+            const matchedUsernames = [...CommonUtilities.findAllByClass(chat, "chat-box-body__message-box___", "button a")]
+                .map((message) => message.textContent.substring(0, message.textContent.length - 1))
+                .filter((username, index, array) => array.indexOf(username) === index && username.toLowerCase().startsWith(ChatGroupFeature.currentSearchValue))
+                .sort();
+            if (!matchedUsernames.length) return;
+ 
+            let index = ChatGroupFeature.currentUsername !== null ? matchedUsernames.indexOf(ChatGroupFeature.currentUsername) + 1 : 0;
+            if (index > matchedUsernames.length - 1) index = 0;
+ 
+            ChatGroupFeature.currentUsername = matchedUsernames[index];
+ 
+            const valueStart = searchValueMatch.index + searchValueMatch[1].length;
+            textarea.value =
+                textarea.value.substring(0, valueStart) + ChatGroupFeature.currentUsername + textarea.value.substring(valueBeforeCursor.length, textarea.value.length);
+ 
+            const selectionIndex = valueStart + ChatGroupFeature.currentUsername.length;
+            textarea.setSelectionRange(selectionIndex, selectionIndex);
+        });
+    }
+}
+ 
+class MessageFeature {
+    static highlightMessages(message, senderName) {
+        if (!settings.messages.highlight.length) return;
+ 
+        const highlights = MessageFeature._buildHighlights();
+ 
+        MessageFeature._nameHighlight(message, highlights, senderName);
+        MessageFeature._messageHighlight(message, highlights);
+    }
+ 
+    static _buildHighlights() {
+        return settings.messages.highlight.map(({search, color}) => ({
+            search: search.replaceAll("%player%", CommonUtilities.getCurrentPlayerName()),
+            color: CommonUtilities.convertColor(color),
+        }));
+    }
+ 
+    static _nameHighlight(message, highlights, senderName) {
+        const nameHighlight = highlights.find(({search}) => senderName.toLowerCase() === search.toLowerCase());
+        if (!nameHighlight) return;
+ 
+        const senderElement = CommonUtilities.findByClass(message, "chat-box-body__sender___");
+        senderElement.setAttribute("style", `background-color: ${nameHighlight.color} !important;`);
+    }
+ 
+    static _messageHighlight(message, highlights) {
+        const messageElement = CommonUtilities.findByClass(message, "chat-box-body__message___");
+        const messageHighlight = highlights.find(({search}) => messageElement.textContent.toLowerCase().includes(search.toLowerCase()));
+        if (!messageHighlight) return
+ 
+        const wrapperElement = CommonUtilities.findByClass(message, "chat-box-body__wrapper___");
+        wrapperElement.setAttribute("style", `background-color: ${messageHighlight.color} !important;`);
+    }
+}
+ 
+class PeopleStatusFeature {
+ 
+    static sortOnStatus(list) {
+        if (settings.box.nameAutocomplete) return;
+ 
+        [...list.querySelectorAll(":scope > [class*='member-card___']")].forEach((card) => {
+            let order;
+            if (CommonUtilities.findByClass(card, "online-status--online___")) {
+                order = "0";
+            } else if (CommonUtilities.findByClass(card, "online-status--idle___")) {
+                order = "1";
+            } else if (CommonUtilities.findByClass(card, "online-status--offline___")) {
+                order = "2";
+            }
+ 
+            card.style.order = order;
+        });
+    }
+}
+ 
+ 
+const settings = new BetterChatSettings();
+ 
+(() => ScriptEventHandler.onLoad())();
