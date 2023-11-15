@@ -9,6 +9,9 @@
 // @grant        none
 // ==/UserScript==
 
+// Made for Phillip_J_Fry [2184575].
+// DO NOT EDIT.
+
 
 const {fetch: origFetch} = window;
 window.fetch = async (...args) => {
