@@ -1,0 +1,79 @@
+// ==UserScript==
+// @name         Show War Local Time
+// @namespace    https://www.torn.com/profiles.php?XID=1936821
+// @version      1.0
+// @description  Shows the war end time in local time.
+// @author       TheFoxMan
+// @match        https://www.torn.com/factions.php*
+// @run-at       document-end
+// ==/UserScript==
+
+// Made for Phillip_J_Fry [2184575].
+// DO NOT EDIT.
+
+if (!Document.prototype.find)
+	Object.defineProperties(Document.prototype, {
+		find: {
+			value(selector) {
+				return document.querySelector(selector);
+			},
+			enumerable: false
+		},
+		findAll: {
+			value(selector) {
+				return document.querySelectorAll(selector);
+			},
+			enumerable: false
+		}
+	});
+
+if (!Element.prototype.find)
+	Object.defineProperties(Element.prototype, {
+		find: {
+			value(selector) {
+				return this.querySelector(selector);
+			},
+			enumerable: false
+		},
+		findAll: {
+			value(selector) {
+				return this.querySelectorAll(selector);
+			},
+			enumerable: false
+		}
+	});
+
+async function waitFor(sel, parent = document) {
+	return new Promise((resolve) => {
+		const intervalID = setInterval(() => {
+			const el = parent.find(sel);
+			if (el) {
+				resolve(el);
+				clearInterval(intervalID);
+			}
+		}, 500);
+	});
+}
+
+(async () => {
+	const warList = await waitFor("#faction_war_list_id");
+
+	warList.findAll("[class*='warListItem__']").forEach((war) => {
+		if (!war.find("[data-warid]")) return;
+
+		const bottomDiv = war.find("[class*='bottomBox__']");
+		const timeLeft = parseTime(bottomDiv.textContent);
+		bottomDiv.insertAdjacentHTML("beforeend", "<div>" + (new Date(Date.now() + timeLeft)).toLocaleString() + "</div>");
+	});
+})();
+
+function parseTime(str) {
+	const splits = str.split(":").map(x => parseInt(x));
+	let time = 0;
+	time += splits[0] * 24 * 60 * 60;
+	time += splits[1] * 60 * 60;
+	time += splits[2] * 60;
+	time += splits[3];
+	time = time * 1000;
+	return time;
+}
