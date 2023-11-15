@@ -8,6 +8,9 @@
 // @run-at       document-start
 // ==/UserScript==
 
+// Made for Phillip_J_Fry [2184575].
+// DO NOT EDIT.
+
 const APIKEY = "###PDA-APIKEY###";
 
 const activityHighlights = [
