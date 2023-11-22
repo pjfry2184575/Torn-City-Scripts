@@ -2,7 +2,7 @@
 // @name         TORN: Better Chat
 // @namespace    dekleinekobini.betterchat
 // @license      GPL-3
-// @version      2.3.1
+// @version      2.4.1
 // @description  Improvements to the usability of chats 2.0.
 // @author       DeKleineKobini [2114440]
 // @match        https://www.torn.com/*
@@ -119,12 +119,13 @@ class BetterChatSettings {
             fontSize: {
                 enabled: false,
                 size: 12,
-            }
+            },
         },
         box: {
             groupRight: true, // opening chat logic to put private chat left of group chats
             hideAvatars: true,
             nameAutocomplete: false,
+            mobileGroups: true,
         },
         people: {
             sortOnStatus: true,
@@ -288,6 +289,12 @@ class BetterChatSettings {
             "Autocomplete when entering an message inside of a group box.",
             () => settings.box.nameAutocomplete,
             (newValue) => settings.box.nameAutocomplete = newValue,
+        );
+        appendCheckbox(
+            "box-mobileGroups",
+            "Always show group chats on mobile.",
+            () => settings.box.mobileGroups,
+            (newValue) => settings.box.mobileGroups = newValue,
         );
  
         appendSubtitle("Highlights");
@@ -481,6 +488,7 @@ class ScriptEventHandler {
  
         // Features
         StylingFeature.defaultStyles();
+        StylingFeature.mobileGroups();
         StylingFeature.hideAvatars();
         StylingFeature.compact();
         StylingFeature.groupRight();
@@ -494,10 +502,13 @@ class ScriptEventHandler {
         new MutationObserver(
             (mutations) => mutations.flatMap((mutation) => [...mutation.addedNodes]).forEach(ScriptEventHandler.onChatOpened)
         ).observe(root, {childList: true});
+        // TODO - Properly detect unread count changing.
+        // Currently I'm failing to get an reliable update of the unread counter, so I've put it on a timer instead.
+        setInterval(ScriptEventHandler.onUnreadCountChange, 5000);
+        ScriptEventHandler.onUnreadCountChange();
  
         // Features
         AccessibilityFeature.describeNotepad();
-        AccessibilityFeature.describePeople();
     }
  
     static onChatOpened(chat) {
@@ -601,6 +612,12 @@ class ScriptEventHandler {
         if (activeTab !== "chats") {
             ScriptEventHandler.onPeopleListLoad(tabContent);
         }
+    }
+ 
+    static onUnreadCountChange() {
+        // Features
+        console.log("DKK onUnreadCountChange")
+        AccessibilityFeature.describePeople();
     }
 }
  
@@ -813,6 +830,20 @@ class StylingFeature {
             }
         `);
     }
+ 
+    static mobileGroups() {
+        if (!settings.box.mobileGroups) return;
+ 
+        StylingFeature.includeStyle(`
+            [class*='minimized-menus__mobile-wrapper___'] {
+                display: none !important;
+            }
+            
+            [class*='minimized-menus__wrapper___'] {
+                display: flex !important;
+            }
+        `);
+    }
 }
  
 class AccessibilityFeature {
@@ -842,7 +873,8 @@ class AccessibilityFeature {
             const className = button.getAttribute("class");
  
             if (className.includes("chat-box-header___")) {
-                description = "Minimize this chat";
+                // Don't describe the header itself as this conflicts with the close button. Use the minimize button instead.
+                description = false;
             } else if (className.includes("chat-box-footer__send-icon-wrapper___")) {
                 description = "Send your message";
             } else if (className.includes("chat-box-body__sender-button___")) {
@@ -907,7 +939,9 @@ class AccessibilityFeature {
         if (!settings.accessibility.describeButtons) return;
  
         const peopleElement = CommonUtilities.findByClass(document, "chat-list-button___");
-        peopleElement.ariaLabel = "List all people";
+        const unreadMessages = parseInt(CommonUtilities.findByClass(peopleElement, "message-count___")?.textContent || "0");
+ 
+        peopleElement.ariaLabel = `List all people | ${unreadMessages} unread messages`;
     }
 }
  
