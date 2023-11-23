@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Crimes Burglary Extended
 // @namespace    https://github.com/SOLiNARY
-// @version      0.5.18
+// @version      0.5.19
 // @description  Sorts all scouted by target, created date, expire date, confidence, risk or uniques number. Remembers your choice.
 // @author       Ramin Quluzade, Silmaril [2665762]
 // @license      MIT License
@@ -485,7 +485,13 @@ div.safetyAssessmentSiblingButtons {
   column-gap: 0.3125rem;
 }
  
+div.crimeOptionSection___hslpu.commitButtonSection___wJfnI {
+  display: flex;
+  flex-wrap: wrap;
+}
+ 
 div.safetyAssessment {
+  width: 125px;
   display: flex;
   justify-content: space-between;
   border-radius: 5px;
@@ -802,23 +808,25 @@ div.silmaril-crimes-burglary-sorting-has-uniques {
                 await sleep(1500);
                 this.textContent = "Not found";
             });
-            const safetyText = document.createElement('p');
+            const safetyText = document.createElement('div');
             safetyText.textContent = "Not found";
             safetyAssessmentDiv.appendChild(safetyText);
             let commitButtonsDiv = element.querySelector('div.crimeOptionSection___hslpu.commitButtonSection___wJfnI');
             commitButtonsDiv.classList.add('safetyAssessmentRoot');
-            commitButtonsDiv.appendChild(safetyAssessmentDiv);
+            commitButtonsDiv.insertBefore(safetyAssessmentDiv, commitButtonsDiv.firstChild);
         } else {
             element.setAttribute('data-safety-level', safetyLevels[safetyAssessments[targetName].safety]);
             const safetyAssessmentDiv = document.createElement('div');
             safetyAssessmentDiv.className = `safetyAssessment ${safetyAssessments[targetName].safety.replace(' ', '')}`;
             safetyAssessmentDiv.title = `<strong>Unique</strong>: ${safetyAssessments[targetName].unique}<br><strong>Finds</strong>: ${safetyAssessments[targetName].finds}<br><strong>Advice</strong>: ${safetyAssessments[targetName].advice}`;
-            const safetyText = document.createElement('p');
+            const casesText = document.createElement('div');
+            casesText.textContent = safetyAssessments[targetName].cases;
+            const safetyText = document.createElement('div');
             safetyText.textContent = safetyAssessments[targetName].safety;
-            safetyAssessmentDiv.appendChild(safetyText);
+            safetyAssessmentDiv.append(safetyText, casesText);
             let commitButtonsDiv = element.querySelector('div.crimeOptionSection___hslpu.commitButtonSection___wJfnI');
             commitButtonsDiv.classList.add('safetyAssessmentRoot');
-            commitButtonsDiv.appendChild(safetyAssessmentDiv);
+            commitButtonsDiv.insertBefore(safetyAssessmentDiv, commitButtonsDiv.firstChild);
         }
     }
  
