@@ -22,7 +22,7 @@ window.fetch = async (...args) => {
     /* work with the cloned response in a separate promise
      chain -- could use the same chain with `await`. */
 
-    if (response.url.includes('/profiles.php?step=getMiniProfile')){
+    if (response.url.includes('page.php?sid=UserMiniProfile')){
       //  console.log("REsponseL : "+response);
 
         response
